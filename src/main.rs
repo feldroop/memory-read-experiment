@@ -1,5 +1,5 @@
 const NUM_BLOCKS: usize = 1 << 24;
-const NUM_READS: usize = 1_000_000_000;
+const NUM_READS: usize = 100_000_000;
 const PREFETCH_DISTANCE: usize = 32;
 
 #[derive(Copy, Clone)]
@@ -10,8 +10,19 @@ struct Block {
 
 impl Block {
     #[inline(always)]
-    fn sum(&self) -> u64 {
+    fn add_other(&mut self, other: &Block) {
+        for (this, other) in self.data.iter_mut().zip(&other.data) {
+            *this += other;
+        }
+    }
+
+    #[inline(always)]
+    fn accumulate_sum(&self) -> u64 {
         self.data.iter().sum()
+    }
+
+    fn zeros() -> Self {
+        Self { data: [0; 8] }
     }
 
     fn ones() -> Self {
@@ -65,66 +76,79 @@ fn main() {
 }
 
 fn sequential_reads(blocks: &[Block]) -> u64 {
-    let mut sum = 0;
+    let mut accumulator_block = Block::zeros();
 
     for index in 0..NUM_READS {
         let index_in_range = index & (NUM_BLOCKS - 1);
-        sum += unsafe { blocks.get_unchecked(index_in_range) }.sum();
+        accumulator_block.add_other(unsafe { blocks.get_unchecked(index_in_range) });
     }
 
-    sum
+    accumulator_block.accumulate_sum()
 }
 
 fn sequential_reads_safe(blocks: &[Block]) -> u64 {
-    blocks.iter().cycle().map(|b| b.sum()).take(NUM_READS).sum()
+    blocks
+        .iter()
+        .cycle()
+        .take(NUM_READS)
+        .fold(Block::zeros(), |mut accumulator_block: Block, block| {
+            accumulator_block.add_other(block);
+            accumulator_block
+        })
+        .accumulate_sum()
 }
 
 fn sequential_reads_prefetching(blocks: &[Block]) -> u64 {
-    let mut sum = 0;
+    let mut accumulator_block = Block::zeros();
 
     for index in 0..NUM_READS {
         let prefetch_index_in_range = (index + PREFETCH_DISTANCE) & (NUM_BLOCKS - 1);
         prefetch(blocks, prefetch_index_in_range);
 
         let index_in_range = index & (NUM_BLOCKS - 1);
-        sum += unsafe { blocks.get_unchecked(index_in_range) }.sum();
+        accumulator_block.add_other(unsafe { blocks.get_unchecked(index_in_range) });
     }
 
-    sum
+    accumulator_block.accumulate_sum()
 }
 
 fn random_reads(blocks: &[Block]) -> u64 {
     let mut rng = fastrand::Rng::new();
 
     std::iter::repeat_with(|| rng.usize(..NUM_BLOCKS))
-        .map(|index| unsafe { blocks.get_unchecked(index) }.sum())
         .take(NUM_READS)
-        .sum()
+        .fold(Block::zeros(), |mut accumulator_block: Block, index| {
+            accumulator_block.add_other(unsafe { blocks.get_unchecked(index) });
+            accumulator_block
+        })
+        .accumulate_sum()
 }
 
 fn random_reads_safe(blocks: &[Block]) -> u64 {
     let mut rng = fastrand::Rng::new();
 
     std::iter::repeat_with(|| rng.usize(..NUM_BLOCKS))
-        .map(|index| blocks[index].sum())
         .take(NUM_READS)
-        .sum()
+        .fold(Block::zeros(), |mut accumulator_block: Block, index| {
+            accumulator_block.add_other(&blocks[index]);
+            accumulator_block
+        })
+        .accumulate_sum()
 }
 
 fn random_reads_prefetching(blocks: &[Block]) -> u64 {
     let mut rng = fastrand::Rng::new();
     let mut prefetched_indices = [42; PREFETCH_DISTANCE];
-    let mut sum = 0;
+    let mut accumulator_block = Block::zeros();
 
     for i in (0..PREFETCH_DISTANCE).cycle().take(NUM_READS) {
-        sum += unsafe { blocks.get_unchecked(prefetched_indices[i]) }.sum();
-
+        accumulator_block.add_other(unsafe { blocks.get_unchecked(prefetched_indices[i]) });
         let prefetch_index = rng.usize(..NUM_BLOCKS);
         prefetch(blocks, prefetch_index);
         prefetched_indices[i] = prefetch_index;
     }
 
-    sum
+    accumulator_block.accumulate_sum()
 }
 
 fn only_rng(_blocks: &[Block]) -> u64 {
