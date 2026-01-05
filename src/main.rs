@@ -1,6 +1,6 @@
 const NUM_BLOCKS: usize = 1 << 24;
-const NUM_READS: usize = 300_000_000;
-const PREFETCH_DISTANCE: usize = 512;
+const NUM_READS: usize = 1_000_000_000;
+const PREFETCH_DISTANCE: usize = 32;
 
 #[derive(Copy, Clone)]
 #[repr(align(64))]
@@ -24,35 +24,41 @@ fn main() {
 
     let measure = |name, f: fn(&[Block]) -> u64| {
         let mut timings = Vec::new();
-        let mut counts = Vec::new();
         let num_iterations = 5;
 
         for _ in 0..num_iterations {
             let start = std::time::Instant::now();
             let count = f(&blocks);
-            counts.push(count);
-            timings.push(start.elapsed().as_millis())
+
+            if count != NUM_READS as u64 * 8 && name != "only rng" {
+                panic!("Wrong count");
+            }
+
+            timings.push(start.elapsed().as_nanos())
         }
 
         println!(
-            "{:<25} took {}/{} ms (min/avg) (count : {})",
+            "{:<25} took {:.2} ns/read (min), {:.2} ns/read (avg)",
             name,
-            timings.iter().min().unwrap(),
-            timings.iter().sum::<u128>() / num_iterations,
-            counts.iter().sum::<u64>() / num_iterations as u64
+            timings
+                .iter()
+                .map(|&t| t as f64 / NUM_READS as f64)
+                .min_by(|a, b| a.partial_cmp(b).unwrap())
+                .unwrap(),
+            timings
+                .iter()
+                .map(|&t| t as f64 / NUM_READS as f64)
+                .sum::<f64>()
+                / num_iterations as f64
         );
     };
 
     measure("sequential", sequential_reads);
-
     measure("sequential safe", sequential_reads_safe);
-
     measure("sequential prefetching", sequential_reads_prefetching);
 
     measure("random", random_reads);
-
     measure("random safe", random_reads_safe);
-
     measure("random prefetching", random_reads_prefetching);
 
     measure("only rng", only_rng);
