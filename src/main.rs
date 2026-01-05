@@ -1,6 +1,7 @@
 const NUM_BLOCKS: usize = 1 << 24;
 const NUM_READS: usize = 100_000_000;
 const PREFETCH_DISTANCE: usize = 32;
+const NUM_THREADS: usize = 16;
 
 #[derive(Copy, Clone)]
 #[repr(align(64))]
@@ -39,28 +40,37 @@ fn main() {
 
         for _ in 0..num_iterations {
             let start = std::time::Instant::now();
-            let count = f(&blocks);
 
-            if count != NUM_READS as u64 * 8 && name != "only rng" {
-                panic!("Wrong count");
-            }
+            std::thread::scope(|s| {
+                let mut handles = Vec::new();
+                for _ in 0..NUM_THREADS {
+                    let handle = s.spawn(|| f(&blocks));
+                    handles.push(handle);
+                }
+
+                for handle in handles {
+                    let count = handle.join().unwrap();
+
+                    if count != NUM_READS as u64 * 8 && name != "only rng" {
+                        panic!("Wrong count");
+                    }
+                }
+            });
 
             timings.push(start.elapsed().as_nanos())
         }
 
+        let min_inverse_throughput = timings
+            .iter()
+            .map(|&t| t as f64 / NUM_READS as f64)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+
         println!(
-            "{:<25} took {:.2} ns/read (min), {:.2} ns/read (avg)",
+            "{:<25} took {:.2} ns/read (min), {:.2} wall",
             name,
-            timings
-                .iter()
-                .map(|&t| t as f64 / NUM_READS as f64)
-                .min_by(|a, b| a.partial_cmp(b).unwrap())
-                .unwrap(),
-            timings
-                .iter()
-                .map(|&t| t as f64 / NUM_READS as f64)
-                .sum::<f64>()
-                / num_iterations as f64
+            min_inverse_throughput / NUM_THREADS as f64,
+            min_inverse_throughput
         );
     };
 

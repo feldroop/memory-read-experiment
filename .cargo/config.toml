@@ -1,2 +1,8 @@
 [build]
-rustflags = ["-C", "target-cpu=native"]
+# rustflags = ["-C", "target-cpu=native"] # most issues
+# rustflags = ["-C", "target-cpu=x86-64-v4"] # some start
+rustflags = [
+    "-C",
+    "target-cpu=x86-64-v3",
+] # best, prefetching doesn't help anymore
+# rustflags = ["-C", "target-cpu=x86-64-v2"] # same as v1
