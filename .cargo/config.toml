@@ -1,8 +1,12 @@
 [build]
-# rustflags = ["-C", "target-cpu=native"] # most issues
-# rustflags = ["-C", "target-cpu=x86-64-v4"] # some start
-rustflags = [
-    "-C",
-    "target-cpu=x86-64-v3",
-] # best, prefetching doesn't help anymore
-# rustflags = ["-C", "target-cpu=x86-64-v2"] # same as v1
+# pretty much same as default (x86-64)
+# rustflags = ["-C", "target-cpu=x86-64-v2"]
+
+# best results, prefetching doesn't help anymore
+# rustflags = ["-C", "target-cpu=x86-64-v3"]
+
+# some weird behavior
+# rustflags = ["-C", "target-cpu=x86-64-v4"]
+
+# similar to x86-64-v4
+rustflags = ["-C", "target-cpu=native"]

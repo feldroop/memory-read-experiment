@@ -35,10 +35,20 @@ fn main() {
     let blocks = vec![Block::ones(); NUM_BLOCKS];
 
     let measure = |name, f: fn(&[Block]) -> u64| {
-        let mut timings = Vec::new();
+        let mut single_threaded_timings = Vec::new();
+        let mut multi_threaded_timings = Vec::new();
         let num_iterations = 5;
 
         for _ in 0..num_iterations {
+            let start = std::time::Instant::now();
+
+            let count = f(&blocks);
+            if count != NUM_READS as u64 * 8 && name != "only rng" {
+                panic!("Wrong count");
+            }
+
+            single_threaded_timings.push(start.elapsed().as_nanos());
+
             let start = std::time::Instant::now();
 
             std::thread::scope(|s| {
@@ -57,20 +67,26 @@ fn main() {
                 }
             });
 
-            timings.push(start.elapsed().as_nanos())
+            multi_threaded_timings.push(start.elapsed().as_nanos());
         }
 
-        let min_inverse_throughput = timings
+        let min_inverse_throughput_single = single_threaded_timings
+            .iter()
+            .map(|&t| t as f64 / NUM_READS as f64)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
+
+        let min_inverse_throughput_multi = multi_threaded_timings
             .iter()
             .map(|&t| t as f64 / NUM_READS as f64)
             .min_by(|a, b| a.partial_cmp(b).unwrap())
             .unwrap();
 
         println!(
-            "{:<25} took {:.2} ns/read (min), {:.2} wall",
+            "{:<25} single-threaded: {:>5.2} ns/read, multi-threaded: {:>5.2} ns/read",
             name,
-            min_inverse_throughput / NUM_THREADS as f64,
-            min_inverse_throughput
+            min_inverse_throughput_single,
+            min_inverse_throughput_multi / NUM_THREADS as f64,
         );
     };
 
